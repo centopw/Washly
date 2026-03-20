@@ -4,6 +4,7 @@ import asyncio
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from voicetools.backends.bookings import SEED_BOOKINGS
 from voicetools.backends.shops import SEED_SHOPS
 from voicetools.backends.users import SEED_USERS
 from voicetools.config import settings
@@ -14,14 +15,14 @@ async def seed() -> None:
     db = client[settings.mongodb_database]
 
     for shop in SEED_SHOPS:
-        doc = dict(shop)
+        doc = {k: v for k, v in shop.items() if k != "coords"}
         doc["coords_geo"] = {
             "type": "Point",
             "coordinates": [shop["coords"]["lng"], shop["coords"]["lat"]],
         }
         await db.shops.update_one(
             {"name": shop["name"]},
-            {"$set": doc},
+            {"$set": doc, "$unset": {"coords": ""}},
             upsert=True,
         )
         print(f"Upserted shop: {shop['name']}")
@@ -33,6 +34,14 @@ async def seed() -> None:
             upsert=True,
         )
         print(f"Upserted user: {user['name']}")
+
+    for booking in SEED_BOOKINGS:
+        await db.bookings.update_one(
+            {"ref": booking["ref"]},
+            {"$set": booking},
+            upsert=True,
+        )
+        print(f"Upserted booking: {booking['ref']} ({booking['customer_name']} @ {booking['shop_name']} {booking['date']} {booking['time']})")
 
     await db.shops.create_index([("coords_geo", "2dsphere")])
     await db.users.create_index("phone", unique=True)

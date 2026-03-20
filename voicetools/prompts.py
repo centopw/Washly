@@ -45,6 +45,6 @@ def build_system_prompt(shops: list[dict] | None = None) -> str:
             for s in shops
         )
     else:
-        shop_list = DEFAULT_SHOP_LIST
+        shop_list = "No shops are currently available."
     builder = PromptBuilder(SYSTEM_PROMPT_TEMPLATE, required_vars={"shop_list"})
     return builder.build(shop_list=shop_list)
