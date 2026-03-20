@@ -1,0 +1,33 @@
+[project]
+name = "pipecat-quickstart"
+version = "0.1.0"
+description = "Quickstart example for building voice AI bots with Pipecat"
+requires-python = ">=3.10"
+dependencies = [
+    "pipecat-ai[cartesia,daily,deepgram,kokoro,local-smart-turn,mlx-whisper,openai,runner,silero,webrtc]",
+    "pipecat-ai-cli",
+    "pipecat-ai-small-webrtc-prebuilt>=2.4.0",
+    "uvicorn>=0.42.0",
+    "fastapi>=0.135.1",
+    "python-dotenv>=1.0.0",
+    "pydantic-settings>=2.0.0",
+    "httpx>=0.28.0",
+    "motor>=3.6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.404,<2",
+    "ruff>=0.12.11,<1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+]
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["I"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
