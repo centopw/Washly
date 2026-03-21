@@ -54,10 +54,32 @@ get_today_date_schema = FunctionSchema(
     required=[],
 )
 
+cancel_booking_schema = FunctionSchema(
+    name="cancel_booking",
+    description="Cancel an existing booking by reference number",
+    properties={
+        "booking_ref": {"type": "string", "description": "The booking reference number (e.g. VAL-XXXX)"},
+    },
+    required=["booking_ref"],
+)
+
+reschedule_booking_schema = FunctionSchema(
+    name="reschedule_booking",
+    description="Reschedule an existing booking to a new date and time",
+    properties={
+        "booking_ref": {"type": "string", "description": "The booking reference number (e.g. VAL-XXXX)"},
+        "new_date": {"type": "string", "description": "New booking date"},
+        "new_time": {"type": "string", "description": "New booking time"},
+    },
+    required=["booking_ref", "new_date", "new_time"],
+)
+
 ALL_SCHEMAS = [
     get_available_shops_schema,
     get_user_details_schema,
     create_booking_schema,
     get_booking_details_schema,
     get_today_date_schema,
+    cancel_booking_schema,
+    reschedule_booking_schema,
 ]

@@ -50,3 +50,14 @@ class MongoBookingBackend:
         db = get_database()
         cursor = db.bookings.find({"shop_name": shop_name, "date": date}, {"_id": 0})
         return await cursor.to_list(length=100)
+
+    async def get_booking_by_ref(self, ref: str) -> dict | None:
+        db = get_database()
+        return await db.bookings.find_one({"ref": ref}, {"_id": 0})
+
+    async def cancel_booking(self, ref: str) -> dict:
+        db = get_database()
+        result = await db.bookings.delete_one({"ref": ref})
+        if result.deleted_count == 0:
+            return {"error": f"Booking {ref} not found."}
+        return {"cancelled": True, "ref": ref}

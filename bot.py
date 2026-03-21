@@ -12,7 +12,10 @@ from loguru import logger
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import LLMRunFrame
+from pipecat.frames.frames import ErrorFrame, LLMRunFrame
+from pipecat.observers.loggers.debug_log_observer import DebugLogObserver
+from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
+from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -22,9 +25,8 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.kokoro.tts import KokoroTTSService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.transcriptions.language import Language
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.request_handler import (
     IceCandidate,
@@ -38,6 +40,7 @@ from pipecat_ai_small_webrtc_prebuilt.frontend import SmallWebRTCPrebuiltUI
 from voicetools.config import settings
 from voicetools.logging import configure_logging
 from voicetools.prompts import build_system_prompt
+from voicetools.language_processor import LanguageDetectionProcessor
 from voicetools.registry import register_all_tools
 from voicetools.backends.db import close_db, ensure_indexes
 
@@ -48,7 +51,7 @@ async def run_bot(transport: SmallWebRTCTransport) -> None:
     stt = DeepgramSTTService(
         api_key=settings.deepgram_api_key,
         settings=DeepgramSTTService.Settings(
-            language="en",
+            language="multi",
             model="nova-2",
         ),
     )
@@ -56,17 +59,18 @@ async def run_bot(transport: SmallWebRTCTransport) -> None:
     llm = OpenAILLMService(
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
-        model=settings.voice_model,
-        extra_headers={
+        default_headers={
             "HTTP-Referer": "https://valet.ai",
             "X-Title": "Valet AI",
         },
+        settings=OpenAILLMService.Settings(model=settings.voice_model),
     )
 
-    tts = KokoroTTSService(
-        settings=KokoroTTSService.Settings(
-            voice=settings.tts_voice_id,
-            language=Language.EN,
+    tts = ElevenLabsTTSService(
+        api_key=settings.elevenlabs_api_key,
+        settings=ElevenLabsTTSService.Settings(
+            voice=settings.elevenlabs_voice_id,
+            model=settings.elevenlabs_model,
         ),
     )
 
@@ -88,6 +92,7 @@ async def run_bot(transport: SmallWebRTCTransport) -> None:
         [
             transport.input(),
             stt,
+            LanguageDetectionProcessor(context),
             user_aggregator,
             llm,
             tts,
@@ -104,12 +109,29 @@ async def run_bot(transport: SmallWebRTCTransport) -> None:
         ),
     )
 
+    if settings.debug_pipeline:
+        task.add_observer(TranscriptionLogObserver())
+        task.add_observer(LLMLogObserver())
+        task.add_observer(DebugLogObserver(frame_types=(ErrorFrame,)))
+
+    @llm.event_handler("on_completion_timeout")
+    async def on_llm_timeout(svc):
+        logger.error("LLM completion timeout (OpenRouter did not respond in time)")
+
+    @tts.event_handler("on_connection_error")
+    async def on_tts_error(svc, error):
+        logger.error("ElevenLabs WebSocket connection error: {}", error)
+
+    @task.event_handler("on_pipeline_error")
+    async def on_error(task, frame):
+        logger.error("Pipeline error: {}", frame)
+
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         logger.info("Client connected")
         context.add_message({
             "role": "user",
-            "content": "[Customer just connected. Greet them warmly and ask how you can help.]",
+            "content": "[Customer just connected. Greet them warmly in both Vietnamese and English, briefly. For example: 'Xin chào! Hello! I'm Valet, your car care concierge. How can I help you today?']",
         })
         await task.queue_frames([LLMRunFrame()])
 

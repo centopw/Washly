@@ -2,11 +2,13 @@ from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.services.openai.llm import OpenAILLMService
 
 from voicetools.tools import (
+    cancel_booking,
     create_booking,
     get_available_shops,
     get_booking_details,
     get_today_date,
     get_user_details,
+    reschedule_booking,
 )
 from voicetools.tools import schemas
 
@@ -16,6 +18,8 @@ TOOL_REGISTRY = [
     ("create_booking", create_booking.handle),
     ("get_booking_details", get_booking_details.handle),
     ("get_today_date", get_today_date.handle),
+    ("cancel_booking", cancel_booking.handle),
+    ("reschedule_booking", reschedule_booking.handle),
 ]
 
 

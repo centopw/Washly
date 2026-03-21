@@ -13,7 +13,11 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "valet"
     backend: str = "mock"
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model: str = "eleven_flash_v2_5"
     log_level: str = "INFO"
+    debug_pipeline: bool = False
     server_host: str = "0.0.0.0"
     server_port: int = 7860
 

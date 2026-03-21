@@ -163,11 +163,10 @@ pipecat cloud deploy
 ## What's Next?
 
 **🔧 Customize your bot**: Modify `bot.py` to change personality, add functions, or integrate with your data  
-**📚 Learn more**: Check out [Pipecat's docs](https://docs.pipecat.ai/) for advanced features  
-**💬 Get help**: Join [Pipecat's Discord](https://discord.gg/pipecat) to connect with the community
-
 ### Troubleshooting
 
 - **Browser permissions**: Allow microphone access when prompted
 - **Connection issues**: Try a different browser or check VPN/firewall settings
 - **Audio issues**: Verify microphone and speakers are working and not muted
+
+
