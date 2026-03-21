@@ -182,6 +182,10 @@ class BookingBackend(Protocol):
 
     async def get_bookings_by_shop_date(self, shop_name: str, date: str) -> list[dict]: ...
 
+    async def cancel_booking(self, ref: str) -> dict: ...
+
+    async def get_booking_by_ref(self, ref: str) -> dict | None: ...
+
 
 class MockBookingBackend:
     def __init__(self) -> None:
@@ -232,3 +236,21 @@ class MockBookingBackend:
                 if b["shop_name"] == shop_name and b["date"] == date:
                     all_bookings.append(b)
         return all_bookings
+
+    async def get_booking_by_ref(self, ref: str) -> dict | None:
+        for bookings in self._bookings.values():
+            for b in bookings:
+                if b["ref"] == ref:
+                    return b
+        return None
+
+    async def cancel_booking(self, ref: str) -> dict:
+        booking = await self.get_booking_by_ref(ref)
+        if not booking:
+            return {"error": f"Booking {ref} not found."}
+        slot = (booking["shop_name"], booking["date"], booking["time"])
+        self._slots.pop(slot, None)
+        phone = booking.get("phone", "")
+        if phone and phone in self._bookings:
+            self._bookings[phone] = [b for b in self._bookings[phone] if b["ref"] != ref]
+        return {"cancelled": True, "ref": ref}
