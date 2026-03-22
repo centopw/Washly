@@ -1,5 +1,5 @@
 """
-Valet AI — Voice Agent
+Washly AI — Voice Agent
 Pipecat v0.0.106+  |  Python 3.13
 """
 
