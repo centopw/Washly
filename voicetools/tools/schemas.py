@@ -32,7 +32,7 @@ create_booking_schema = FunctionSchema(
         "date": {"type": "string", "description": "Booking date"},
         "time": {"type": "string", "description": "Booking time"},
         "customer_name": {"type": "string", "description": "Customer name"},
-        "car_info": {"type": "string", "description": "Car make, model, plate"},
+        "car_info": {"type": "string", "description": "Car make and model"},
         "phone_number": {"type": "string", "description": "Customer phone number"},
     },
     required=["shop_name", "service", "date", "time"],

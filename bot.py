@@ -4,6 +4,7 @@ Pipecat v0.0.106+  |  Python 3.13
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,7 @@ from loguru import logger
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import ErrorFrame, LLMRunFrame
+from pipecat.frames.frames import ErrorFrame, LLMRunFrame, OutputAudioRawFrame
 from pipecat.observers.loggers.debug_log_observer import DebugLogObserver
 from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
 from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
@@ -40,11 +41,12 @@ from pipecat_ai_small_webrtc_prebuilt.frontend import SmallWebRTCPrebuiltUI
 from voicetools.config import settings
 from voicetools.logging import configure_logging
 from voicetools.prompts import build_system_prompt
-from voicetools.language_processor import LanguageDetectionProcessor
 from voicetools.registry import register_all_tools
 from voicetools.backends.db import close_db, ensure_indexes
 
 configure_logging(settings.log_level)
+
+IVR_AUDIO = Path("assets/ivr_welcome.pcm").read_bytes()
 
 
 async def run_bot(transport: SmallWebRTCTransport) -> None:
@@ -92,7 +94,6 @@ async def run_bot(transport: SmallWebRTCTransport) -> None:
         [
             transport.input(),
             stt,
-            LanguageDetectionProcessor(context),
             user_aggregator,
             llm,
             tts,
@@ -129,16 +130,30 @@ async def run_bot(transport: SmallWebRTCTransport) -> None:
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         logger.info("Client connected")
-        context.add_message({
-            "role": "user",
-            "content": "[Customer just connected. Greet them warmly in both Vietnamese and English, briefly. For example: 'Xin chào! Hello! I'm Valet, your car care concierge. How can I help you today?']",
-        })
-        await task.queue_frames([LLMRunFrame()])
+        await task.queue_frames([
+            OutputAudioRawFrame(audio=IVR_AUDIO, sample_rate=24000, num_channels=1)
+        ])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
         logger.info("Client disconnected")
         await task.cancel()
+
+    @transport.event_handler("on_app_message")
+    async def on_app_message(transport, message, sender):
+        if isinstance(message, dict) and message.get("type") == "language_selection":
+            lang = message.get("language", "en")
+            lang_name = "English" if lang == "en" else "Vietnamese"
+            logger.info("Language selected: {}", lang_name)
+            context.add_message({
+                "role": "system",
+                "content": f"The customer selected {lang_name}. You MUST respond ONLY in {lang_name} for the rest of this conversation.",
+            })
+            context.add_message({
+                "role": "user",
+                "content": f"[Customer selected {lang_name}. Greet them warmly in {lang_name} and ask how you can help.]",
+            })
+            await task.queue_frames([LLMRunFrame()])
 
     runner = PipelineRunner(handle_sigint=False)
     try:

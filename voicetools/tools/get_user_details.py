@@ -22,6 +22,6 @@ async def handle(params) -> None:
 
     result = (
         f"Found customer {user['name']}, {user['tier']} member, "
-        f"driving a {user['car_make']} {user['car_model']} with plate {user['car_plate']}."
+        f"driving a {user['car_make']} {user['car_model']}."
     )
     await params.result_callback(result)
