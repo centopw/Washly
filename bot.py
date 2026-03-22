@@ -4,30 +4,13 @@ Pipecat v0.0.106+  |  Python 3.13
 """
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from loguru import logger
 
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import ErrorFrame, LLMRunFrame, OutputAudioRawFrame
-from pipecat.observers.loggers.debug_log_observer import DebugLogObserver
-from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
-from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import (
-    LLMContextAggregatorPair,
-    LLMUserAggregatorParams,
-)
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
-from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.audio.filters.rnnoise_filter import RNNoiseFilter
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.request_handler import (
     IceCandidate,
@@ -40,126 +23,10 @@ from pipecat_ai_small_webrtc_prebuilt.frontend import SmallWebRTCPrebuiltUI
 
 from voicetools.config import settings
 from voicetools.logging import configure_logging
-from voicetools.prompts import build_system_prompt
-from voicetools.registry import register_all_tools
 from voicetools.backends.db import close_db, ensure_indexes
+from voicetools.pipeline import run_bot
 
 configure_logging(settings.log_level)
-
-IVR_AUDIO = Path("assets/ivr_welcome.pcm").read_bytes()
-
-
-async def run_bot(transport: SmallWebRTCTransport) -> None:
-    stt = DeepgramSTTService(
-        api_key=settings.deepgram_api_key,
-        settings=DeepgramSTTService.Settings(
-            language="multi",
-            model="nova-2",
-        ),
-    )
-
-    llm = OpenAILLMService(
-        api_key=settings.openrouter_api_key,
-        base_url="https://openrouter.ai/api/v1",
-        default_headers={
-            "HTTP-Referer": "https://valet.ai",
-            "X-Title": "Valet AI",
-        },
-        settings=OpenAILLMService.Settings(model=settings.voice_model),
-    )
-
-    tts = ElevenLabsTTSService(
-        api_key=settings.elevenlabs_api_key,
-        settings=ElevenLabsTTSService.Settings(
-            voice=settings.elevenlabs_voice_id,
-            model=settings.elevenlabs_model,
-        ),
-    )
-
-    tools = register_all_tools(llm)
-
-    messages = [{"role": "system", "content": build_system_prompt()}]
-    context = LLMContext(messages, tools=tools)
-
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context,
-        user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(
-                params=VADParams(stop_secs=0.3)
-            ),
-        ),
-    )
-
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            stt,
-            user_aggregator,
-            llm,
-            tts,
-            transport.output(),
-            assistant_aggregator,
-        ]
-    )
-
-    task = PipelineTask(
-        pipeline,
-        params=PipelineParams(
-            allow_interruptions=True,
-            enable_metrics=True,
-        ),
-    )
-
-    if settings.debug_pipeline:
-        task.add_observer(TranscriptionLogObserver())
-        task.add_observer(LLMLogObserver())
-        task.add_observer(DebugLogObserver(frame_types=(ErrorFrame,)))
-
-    @llm.event_handler("on_completion_timeout")
-    async def on_llm_timeout(svc):
-        logger.error("LLM completion timeout (OpenRouter did not respond in time)")
-
-    @tts.event_handler("on_connection_error")
-    async def on_tts_error(svc, error):
-        logger.error("ElevenLabs WebSocket connection error: {}", error)
-
-    @task.event_handler("on_pipeline_error")
-    async def on_error(task, frame):
-        logger.error("Pipeline error: {}", frame)
-
-    @transport.event_handler("on_client_connected")
-    async def on_connected(transport, client):
-        logger.info("Client connected")
-        await task.queue_frames([
-            OutputAudioRawFrame(audio=IVR_AUDIO, sample_rate=24000, num_channels=1)
-        ])
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_disconnected(transport, client):
-        logger.info("Client disconnected")
-        await task.cancel()
-
-    @transport.event_handler("on_app_message")
-    async def on_app_message(transport, message, sender):
-        if isinstance(message, dict) and message.get("type") == "language_selection":
-            lang = message.get("language", "en")
-            lang_name = "English" if lang == "en" else "Vietnamese"
-            logger.info("Language selected: {}", lang_name)
-            context.add_message({
-                "role": "system",
-                "content": f"The customer selected {lang_name}. You MUST respond ONLY in {lang_name} for the rest of this conversation.",
-            })
-            context.add_message({
-                "role": "user",
-                "content": f"[Customer selected {lang_name}. Greet them warmly in {lang_name} and ask how you can help.]",
-            })
-            await task.queue_frames([LLMRunFrame()])
-
-    runner = PipelineRunner(handle_sigint=False)
-    try:
-        await runner.run(task)
-    except Exception:
-        logger.exception("Bot pipeline error")
 
 
 # ── FastAPI ───────────────────────────────────────────────────
@@ -216,6 +83,7 @@ async def offer(request: Request, background_tasks: BackgroundTasks):
                 params=TransportParams(
                     audio_in_enabled=True,
                     audio_out_enabled=True,
+                    audio_in_filter=RNNoiseFilter(),
                 ),
             )
             background_tasks.add_task(run_bot, transport)
