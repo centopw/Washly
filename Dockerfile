@@ -15,3 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy the application code
 COPY ./bot.py bot.py
 COPY ./voicetools voicetools
+
+EXPOSE 7860
+
+CMD ["uv", "run", "bot.py"]
